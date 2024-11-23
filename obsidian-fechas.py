@@ -1,11 +1,15 @@
 import os
 import re
+import argparse
 
-# Configurá el directorio donde se encuentran tus archivos markdown
-directorio = r'c:\Users\aldo_\Mi unidad\DriveSyncFiles\Aldo_Seewald\aldo_informatica'
+# Configurá el directorio usando argparse para aceptar argumentos de línea de comandos
+def obtener_argumentos():
+    parser = argparse.ArgumentParser(description='Reemplazar fechas en archivos .md en un directorio.')
+    parser.add_argument('directorio', type=str, help='Ruta del directorio con archivos .md')
+    return parser.parse_args()
 
 # Expresión regular para encontrar fechas en formato DD/MM/AAAA
-patron = re.compile(r'(\d{2})\/(\d{1})\/(\d{4})')
+patron = re.compile(r'(\d{2})\/(\d{2})\/(\d{4})')
 
 # Reemplazo para cambiar fechas a [[AAAA-MM-DD]]
 reemplazo = r'[[\3-\2-\1]]'
@@ -36,6 +40,8 @@ def corregir_fechas_en_directorio(directorio):
                 except Exception as e:
                     print(f'Error al procesar {ruta_archivo}: {e}')
 
-# Ejecutar la función
-corregir_fechas_en_directorio(directorio)
+# Ejecutar la función principal
+if __name__ == '__main__':
+    args = obtener_argumentos()
+    corregir_fechas_en_directorio(args.directorio)
 
