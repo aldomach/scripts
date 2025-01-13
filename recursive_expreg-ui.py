@@ -3,78 +3,101 @@ import re
 import json
 import csv
 from tkinter import Tk, Label, Entry, Button, filedialog, IntVar, Checkbutton, Toplevel, messagebox, Text
-from shutil import copy2
 
 HISTORIAL_FILE = "historial.json"
 
 def cargar_historial():
-    """
-    Carga el historial de expresiones regulares desde un archivo JSON.
-    """
     if os.path.exists(HISTORIAL_FILE):
         with open(HISTORIAL_FILE, 'r', encoding='utf-8') as file:
             return json.load(file)
     return []
 
 def guardar_historial(historial):
-    """
-    Guarda el historial de expresiones regulares en un archivo JSON.
-    """
     with open(HISTORIAL_FILE, 'w', encoding='utf-8') as file:
         json.dump(historial, file, ensure_ascii=False, indent=4)
 
-def mostrar_vista_previa(directorio, patron, reemplazo, incluir_formatos, excluir_formatos):
+def mostrar_vista_previa_navegable(archivos, reemplazos):
     """
-    Muestra una ventana emergente con la vista previa del primer archivo procesado correctamente.
+    Muestra una ventana emergente con la vista previa de los archivos procesados.
+    Navegación: Siguiente, Anterior, Ejecutar.
     """
-    try:
-        patron_compilado = re.compile(patron)
-    except re.error as e:
-        messagebox.showinfo("Error", f"Expresión regular inválida: {e}")
+    if not archivos:
+        messagebox.showinfo("Vista previa", "No se encontraron archivos con coincidencias.")
         return
 
-    for root, _, files in os.walk(directorio):
-        for archivo in files:
-            if incluir_formatos and not any(archivo.endswith(ext) for ext in incluir_formatos):
-                continue
-            if excluir_formatos and any(archivo.endswith(ext) for ext in excluir_formatos):
-                continue
+    indice = [0]  # Mutable para ser actualizado por botones
 
-            ruta_archivo = os.path.join(root, archivo)
-            try:
-                with open(ruta_archivo, 'r', encoding='utf-8') as file:
-                    contenido = file.read()
+    def actualizar_vista():
+        archivo = archivos[indice[0]]
+        with open(archivo, 'r', encoding='utf-8') as file:
+            contenido = file.read()
 
-                if re.search(patron_compilado, contenido):
-                    nuevo_contenido = re.sub(patron_compilado, reemplazo, contenido)
+        nuevo_contenido = contenido
+        for patron, reemplazo in reemplazos:
+            nuevo_contenido = re.sub(patron, reemplazo, nuevo_contenido)
 
-                    ventana_previa = Toplevel()
-                    ventana_previa.title(f"Vista previa: {archivo}")
+        text_antes.config(state="normal")
+        text_antes.delete("1.0", "end")
+        text_antes.insert("1.0", contenido)
+        text_antes.config(state="disabled")
 
-                    Label(ventana_previa, text="Antes:").pack(anchor="w")
-                    text_antes = Text(ventana_previa, wrap="word", height=10, width=80)
-                    text_antes.insert("1.0", contenido)
-                    text_antes.config(state="disabled")
-                    text_antes.pack()
+        text_despues.config(state="normal")
+        text_despues.delete("1.0", "end")
+        text_despues.insert("1.0", nuevo_contenido)
+        text_despues.config(state="disabled")
 
-                    Label(ventana_previa, text="Después:").pack(anchor="w")
-                    text_despues = Text(ventana_previa, wrap="word", height=10, width=80)
-                    text_despues.insert("1.0", nuevo_contenido)
-                    text_despues.config(state="disabled")
-                    text_despues.pack()
+        label_archivo.config(text=f"Archivo: {archivo}")
 
-                    Button(ventana_previa, text="Cerrar", command=ventana_previa.destroy).pack(pady=5)
-                    return
-            except Exception as e:
-                print(f"Error al procesar {ruta_archivo}: {e}")
+    def siguiente():
+        if indice[0] < len(archivos) - 1:
+            indice[0] += 1
+            actualizar_vista()
 
-    messagebox.showinfo("Vista previa", "No se encontraron archivos con coincidencias.")
+    def anterior():
+        if indice[0] > 0:
+            indice[0] -= 1
+            actualizar_vista()
+
+    def ejecutar_actual():
+        archivo = archivos[indice[0]]
+        with open(archivo, 'r', encoding='utf-8') as file:
+            contenido = file.read()
+
+        nuevo_contenido = contenido
+        for patron, reemplazo in reemplazos:
+            nuevo_contenido = re.sub(patron, reemplazo, nuevo_contenido)
+
+        with open(archivo, 'w', encoding='utf-8') as file:
+            file.write(nuevo_contenido)
+
+        messagebox.showinfo("Ejecutado", f"Reemplazos aplicados en: {archivo}")
+        actualizar_vista()
+
+    # Crear la ventana de vista previa
+    ventana_previa = Toplevel()
+    ventana_previa.title("Vista previa navegable")
+
+    label_archivo = Label(ventana_previa, text="")
+    label_archivo.pack()
+
+    Label(ventana_previa, text="Antes:").pack(anchor="w")
+    text_antes = Text(ventana_previa, wrap="word", height=10, width=80)
+    text_antes.pack()
+
+    Label(ventana_previa, text="Después:").pack(anchor="w")
+    text_despues = Text(ventana_previa, wrap="word", height=10, width=80)
+    text_despues.pack()
+
+    Button(ventana_previa, text="Anterior", command=anterior).pack(side="left", padx=10)
+    Button(ventana_previa, text="Siguiente", command=siguiente).pack(side="left", padx=10)
+    Button(ventana_previa, text="Ejecutar en este archivo", command=ejecutar_actual).pack(side="left", padx=10)
+    Button(ventana_previa, text="Cerrar", command=ventana_previa.destroy).pack(side="left", padx=10)
+
+    actualizar_vista()
 
 def buscar_y_reemplazar(directorio, reemplazos, incluir_formatos, excluir_formatos, backup, exportar):
-    """
-    Busca y reemplaza texto en los archivos de un directorio para múltiples expresiones regulares.
-    """
     resultados = []
+    archivos_con_coincidencias = []
 
     for root, _, files in os.walk(directorio):
         for archivo in files:
@@ -95,6 +118,7 @@ def buscar_y_reemplazar(directorio, reemplazos, incluir_formatos, excluir_format
                     cambios_realizados += cantidad
 
                 if cambios_realizados > 0:
+                    archivos_con_coincidencias.append(ruta_archivo)
                     if backup:
                         respaldo = ruta_archivo + '.bak'
                         copy2(ruta_archivo, respaldo)
@@ -113,24 +137,23 @@ def buscar_y_reemplazar(directorio, reemplazos, incluir_formatos, excluir_format
             writer.writerow(["Archivo", "Cambios realizados"])
             writer.writerows(resultados)
 
-    messagebox.showinfo("Completado", f"Reemplazo completado en {len(resultados)} archivo(s).")
+    return archivos_con_coincidencias
 
-def agregar_reemplazo():
+def mostrar_historial():
     """
-    Agrega una nueva expresión regular y su reemplazo a la lista de reemplazos.
+    Muestra el historial de expresiones regulares en una ventana emergente.
     """
-    patron = entrada_patron.get()
-    reemplazo = entrada_reemplazo.get()
-    if patron and reemplazo:
-        reemplazos.append((patron, reemplazo))
-        historial.append({"patron": patron, "reemplazo": reemplazo})
-        guardar_historial(historial)
-        messagebox.showinfo("Agregado", f"Expresión '{patron}' -> '{reemplazo}' añadida.")
-    else:
-        messagebox.showinfo("Error", "Por favor, completa ambos campos.")
+    ventana_historial = Toplevel()
+    ventana_historial.title("Historial de Expresiones Regulares")
 
-# Cargar historial
-historial = cargar_historial()
+    Label(ventana_historial, text="Historial de expresiones regulares:").pack()
+    text_historial = Text(ventana_historial, wrap="word", height=15, width=50)
+    text_historial.pack()
+
+    for item in historial:
+        text_historial.insert("end", f"Expresión: {item['patron']} -> Reemplazo: {item['reemplazo']}\n")
+
+    Button(ventana_historial, text="Cerrar", command=ventana_historial.destroy).pack(pady=5)
 
 # Crear la interfaz gráfica
 ventana = Tk()
@@ -149,31 +172,17 @@ Label(ventana, text="Reemplazo:").grid(row=2, column=0, sticky="w")
 entrada_reemplazo = Entry(ventana, width=50)
 entrada_reemplazo.grid(row=2, column=1)
 
-Button(ventana, text="Agregar Reemplazo", command=agregar_reemplazo).grid(row=3, column=1, pady=5)
+Button(ventana, text="Vista Previa", command=lambda: mostrar_vista_previa_navegable(
+    buscar_y_reemplazar(
+        entrada_directorio.get(), reemplazos, [], [], backup_var.get(), False
+    ),
+    reemplazos
+)).grid(row=3, column=1)
 
-Button(ventana, text="Vista Previa", command=lambda: mostrar_vista_previa(
-    entrada_directorio.get(),
-    entrada_patron.get(),
-    entrada_reemplazo.get(),
-    [],
-    []
-)).grid(row=4, column=1, pady=5)
-
-Button(ventana, text="Ejecutar", command=lambda: buscar_y_reemplazar(
-    entrada_directorio.get(),
-    reemplazos,
-    [],
-    [],
-    backup_var.get(),
-    exportar_var.get()
-)).grid(row=5, column=1, pady=10)
-
-backup_var = IntVar()
-Checkbutton(ventana, text="Crear respaldos", variable=backup_var).grid(row=6, column=1, sticky="w")
-
-exportar_var = IntVar()
-Checkbutton(ventana, text="Exportar resultados", variable=exportar_var).grid(row=7, column=1, sticky="w")
+Button(ventana, text="Historial", command=mostrar_historial).grid(row=4, column=1)
 
 reemplazos = []
+backup_var = IntVar()
+Checkbutton(ventana, text="Crear respaldos", variable=backup_var).grid(row=5, column=1, sticky="w")
 
 ventana.mainloop()
