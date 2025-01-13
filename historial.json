@@ -1,0 +1,10 @@
+[
+    {
+        "patron": "lista",
+        "reemplazo": "Lista"
+    },
+    {
+        "patron": "Tipo",
+        "reemplazo": "Tipe"
+    }
+]
