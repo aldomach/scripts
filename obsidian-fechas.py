@@ -2,6 +2,16 @@ import os
 import re
 import argparse
 
+# Este script sirve para buscar y reemplazar fechas en formato DD/MM/AAAA por el formato [[AAAA-MM-DD]]
+# dentro de archivos .md ubicados en un directorio y sus subdirectorios. El script toma como entrada la 
+# ruta del directorio, recorre todos los archivos con la extensión .md, lee su contenido y, cuando encuentra 
+# una fecha, la reemplaza con el formato deseado.
+# 
+# En resumen, este script automatiza el proceso de corregir fechas en varios archivos de texto (Markdown) 
+# de manera eficiente, asegurando que todas las fechas tengan un formato uniforme, lo que puede ser útil, 
+# por ejemplo, para mantener consistencia en registros de documentos o publicaciones.
+
+
 # Configurá el directorio usando argparse para aceptar argumentos de línea de comandos
 def obtener_argumentos():
     parser = argparse.ArgumentParser(description='Reemplazar fechas en archivos .md en un directorio.')
