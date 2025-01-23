@@ -2,6 +2,13 @@ import os
 import platform
 from datetime import datetime
 
+# Genera un archivo .bat para comprimir archivos PDF utilizando PDF24. 
+# El script mantiene la estructura de directorios original en el destino, 
+# asegurando que no se sobrescriban archivos existentes. 
+# Las rutas de origen, destino, el software PDF24 y la calidad de compresión 
+# son configurables al inicio del script.
+
+
 # Variables al inicio
 origen = "c:\Temp\comprimir\DISPONIBLES"
 destino = "c:\Temp\comprim"
