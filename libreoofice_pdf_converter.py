@@ -1,109 +1,262 @@
 import os
-import shutil
-import tkinter as tk
-from tkinter import filedialog, ttk
-from datetime import datetime
 import subprocess
-import logging
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from datetime import datetime
+import shutil
 
-def seleccionar_directorio():
-    directorio = filedialog.askdirectory()
-    return directorio
+stop_conversion = False
 
-def seleccionar_directorio_origen():
-    directorio = seleccionar_directorio()
-    entrada_origen.delete(0, tk.END)
-    entrada_origen.insert(0, directorio)
+# Obtener la carpeta donde está el script
+script_directory = os.path.dirname(os.path.abspath(__file__))
 
-def seleccionar_directorio_destino():
-    directorio = seleccionar_directorio()
-    entrada_destino.delete(0, tk.END)
-    entrada_destino.insert(0, directorio)
 
-def seleccionar_directorio_libreoffice():
-    directorio = seleccionar_directorio()
-    entrada_libreoffice.delete(0, tk.END)
-    entrada_libreoffice.insert(0, directorio)
+# Función para convertir archivos a PDF
+def convert_to_pdf(input_path, output_path, libreoffice_path):
+    try:
+        command = [
+            libreoffice_path,
+            '--headless',
+            '--convert-to', 'pdf',
+            '--outdir', output_path,
+            input_path
+        ]
+        subprocess.run(command, check=True)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Error al convertir {input_path} a PDF: {e}")
 
-def generar_log():
-    nombre_log = datetime.now().strftime('log_%Y%m%d_%H%M%S.txt')
-    logging.basicConfig(filename=nombre_log, level=logging.INFO)
-    return nombre_log
 
-def convertir_archivo(ruta_completa, archivo_salida, libreoffice_path):
-    comando = f'"{libreoffice_path}" --headless --convert-to pdf "{ruta_completa}" --outdir "{os.path.dirname(archivo_salida)}"'
-    subprocess.call(comando, shell=True)
-    shutil.move(os.path.join(os.path.dirname(ruta_completa), os.path.basename(archivo_salida)), archivo_salida)
-    shutil.copystat(ruta_completa, archivo_salida)
+# Función para copiar la fecha del archivo original al PDF
+def copy_file_date(src, dst):
+    try:
+        timestamp = os.path.getmtime(src)
+        os.utime(dst, (timestamp, timestamp))
+    except Exception as e:
+        raise RuntimeError(f"Error al copiar la fecha del archivo de {src} a {dst}: {e}")
 
-def analizar_carpeta(origen, destino, libreoffice_path, extensiones):
-    log_file = generar_log()
-    logging.info(f"Conversión iniciada: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    for root, _, files in os.walk(origen):
-        for file in files:
-            if any(file.lower().endswith(ext) for ext in extensiones):
-                ruta_completa = os.path.join(root, file)
-                estructura_relativa = os.path.relpath(root, origen)
-                carpeta_destino = os.path.join(destino, estructura_relativa)
-                os.makedirs(carpeta_destino, exist_ok=True)
-                archivo_salida = os.path.join(carpeta_destino, f"{os.path.splitext(file)[0]}.pdf")
-                try:
-                    convertir_archivo(ruta_completa, archivo_salida, libreoffice_path)
-                    logging.info(f"Convertido: {ruta_completa} -> {archivo_salida}")
-                except Exception as e:
-                    logging.error(f"Error al convertir {ruta_completa}: {str(e)}")
-    logging.info(f"Conversión finalizada: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-def convertir():
-    origen = entrada_origen.get()
-    destino = entrada_destino.get()
-    libreoffice_path = os.path.join(entrada_libreoffice.get(), 'program\\soffice.exe')
-    guardar_otra_ubicacion = chk_estado.get()
-    extensiones = [ext for ext, var in extension_vars.items() if var.get()]
-    if guardar_otra_ubicacion:
-        destino = entrada_destino.get()
-    else:
-        destino = origen
-    analizar_carpeta(origen, destino, libreoffice_path, extensiones)
+# Función para iniciar la conversión
+def start_conversion():
+    global stop_conversion
+    stop_conversion = False
 
-ventana = tk.Tk()
-ventana.title("Conversor de Archivos a PDF usando LibreOffice")
+    # Validaciones de las entradas
+    if not os.path.exists(libreoffice_path_var.get()):
+        messagebox.showerror("Error", "Ruta de LibreOffice inválida.")
+        return
 
-descripcion = tk.Label(ventana, text="Esta aplicación convierte archivos a PDF utilizando LibreOffice. Puedes seleccionar las extensiones de los archivos a convertir, la carpeta de origen y destino, y otras opciones.")
-descripcion.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
+    if not os.path.exists(source_folder_var.get()):
+        messagebox.showerror("Error", "Carpeta de origen inválida.")
+        return
 
-tk.Label(ventana, text="Directorio de Origen:").grid(row=1, column=0, padx=10, pady=5)
-entrada_origen = tk.Entry(ventana, width=50)
-entrada_origen.grid(row=1, column=1, padx=10, pady=5)
-tk.Button(ventana, text="Seleccionar", command=seleccionar_directorio_origen).grid(row=1, column=2, padx=10, pady=5)
+    if save_to_other_location_var.get():
+        if not os.path.exists(destination_folder_var.get()):
+            messagebox.showerror("Error", "Carpeta de destino inválida.")
+            return
 
-tk.Label(ventana, text="Directorio de Destino:").grid(row=2, column=0, padx=10, pady=5)
-entrada_destino = tk.Entry(ventana, width=50)
-entrada_destino.grid(row=2, column=1, padx=10, pady=5)
-tk.Button(ventana, text="Seleccionar", command=seleccionar_directorio_destino).grid(row=2, column=2, padx=10, pady=5)
+    if not move_option_var.get():
+        messagebox.showerror("Error", "Debe seleccionar una opción para mover los archivos originales.")
+        return
 
-tk.Label(ventana, text="Ruta de LibreOffice:").grid(row=3, column=0, padx=10, pady=5)
-entrada_libreoffice = tk.Entry(ventana, width=50)
-entrada_libreoffice.grid(row=3, column=1, padx=10, pady=5)
-entrada_libreoffice.insert(0, "c:\\Program Files\\LibreOffice")
-tk.Button(ventana, text="Seleccionar", command=seleccionar_directorio_libreoffice).grid(row=3, column=2, padx=10, pady=5)
+    extensions_to_convert = [ext for ext, var in checkboxes.items() if var.get()]
+    if not extensions_to_convert:
+        messagebox.showerror("Error", "No se seleccionaron extensiones para convertir.")
+        return
 
-tk.Label(ventana, text="Extensiones a convertir:").grid(row=4, column=0, padx=10, pady=5, sticky="nw")
-extension_vars = {
-    '.doc': tk.IntVar(),
-    '.docx': tk.IntVar(),
-    '.xls': tk.IntVar(),
-    '.xlsx': tk.IntVar(),
-    '.ppt': tk.IntVar(),
-    '.pptx': tk.IntVar()
+    source_folder = source_folder_var.get()
+    dest_folder = destination_folder_var.get() if save_to_other_location_var.get() else source_folder
+
+    # Log
+    log_file = os.path.join(dest_folder, f"log_conversion_{datetime.now().strftime('%Y%m%d%H%M%S')}.txt")
+    with open(log_file, 'w') as log:
+        for root, _, files in os.walk(source_folder):
+            if stop_conversion:
+                log.write("Conversión detenida por el usuario.\n")
+                break
+            for file in files:
+                if any(file.endswith(ext) for ext in extensions_to_convert):
+                    input_path = os.path.join(root, file)
+                    relative_path = os.path.relpath(root, source_folder)
+                    output_dir = os.path.join(dest_folder, relative_path)
+                    os.makedirs(output_dir, exist_ok=True)
+                    output_path = os.path.join(output_dir, f"{os.path.splitext(file)[0]}.pdf")
+
+                    try:
+                        convert_to_pdf(input_path, output_dir, libreoffice_path_var.get())
+                        if maintain_date_var.get() and os.path.exists(output_path):
+                            copy_file_date(input_path, output_path)
+
+                        log.write(f"ÉXITO: {file} - {output_path}\n")
+
+                        # Mover archivo original según la opción seleccionada
+                        if move_option_var.get() == "mover_si_mas_pequeno":
+                            if os.path.exists(output_path):
+                                pdf_size = os.path.getsize(output_path)
+                                original_size = os.path.getsize(input_path)
+                                
+                                if pdf_size < original_size:
+                                    # Mover el archivo original solo si el PDF es más pequeño
+                                    move_folder = move_originals_folder_var.get()
+                                    if move_folder:
+                                        move_dest_path = os.path.join(move_folder, relative_path, file)
+                                        os.makedirs(os.path.dirname(move_dest_path), exist_ok=True)
+                                        shutil.move(input_path, move_dest_path)
+                                        log.write(f"Archivo original movido a: {move_dest_path}\n")
+                                else:
+                                    log.write(f"Archivo original NO movido. El PDF es más grande o igual que el archivo de origen.\n")
+                        elif move_option_var.get() == "mover_todos":
+                            move_folder = move_originals_folder_var.get()
+                            if move_folder:
+                                move_dest_path = os.path.join(move_folder, relative_path, file)
+                                os.makedirs(os.path.dirname(move_dest_path), exist_ok=True)
+                                shutil.move(input_path, move_dest_path)
+                                log.write(f"Archivo original movido a: {move_dest_path}\n")
+                        else:
+                            log.write("Opción de mover archivos originales no seleccionada.\n")
+
+                    except Exception as e:
+                        log.write(f"FALLÓ: {file} - {e}\n")
+
+    messagebox.showinfo("Conversión Completa", f"Conversión completada. Log guardado en {log_file}")
+
+
+# Función para detener la conversión
+def stop_conversion_process():
+    global stop_conversion
+    stop_conversion = True
+
+
+# Función para explorar carpetas
+def browse_folder(var):
+    folder = filedialog.askdirectory()
+    if folder:
+        var.set(folder)
+
+
+# Función para explorar archivos
+def browse_file(var):
+    file = filedialog.askopenfilename()
+    if file:
+        var.set(file)
+
+
+# Función para activar o desactivar la selección de carpeta de destino
+def toggle_destination():
+    destination_entry.configure(state=tk.NORMAL if save_to_other_location_var.get() else tk.DISABLED)
+    destination_button.configure(state=tk.NORMAL if save_to_other_location_var.get() else tk.DISABLED)
+
+
+# Función para activar o desactivar la selección de mover archivos originales
+def toggle_move_originals():
+    move_originals_entry.configure(state=tk.NORMAL if move_option_var.get() in ["mover_si_mas_pequeno", "mover_todos"] else tk.DISABLED)
+    move_originals_button.configure(state=tk.NORMAL if move_option_var.get() in ["mover_si_mas_pequeno", "mover_todos"] else tk.DISABLED)
+
+
+# Configuración de la interfaz gráfica
+root = tk.Tk()
+root.title("Conversor de Archivos a PDF")
+root.geometry("600x730")
+
+# Descripción
+tk.Label(root, 
+         text="Esta herramienta convierte documentos a PDF utilizando LibreOffice.\n\n "
+              "Seleccione la carpeta de origen, las extensiones a convertir, y si desea guardar en otra ubicación o mover los archivos originales. "
+              "\n\nPuede mantener la fecha del archivo original si lo desea.", 
+         wraplength=550).pack(anchor="w", padx=10, pady=10, fill="x")
+
+# Ruta de LibreOffice
+libreoffice_path_var = tk.StringVar(value="C:/Program Files/LibreOffice/program/soffice.exe")
+tk.Label(root, text="Ruta de LibreOffice:").pack(anchor="w")
+tk.Entry(root, textvariable=libreoffice_path_var).pack(fill="x", padx=10)
+tk.Button(root, text="Examinar", command=lambda: browse_file(libreoffice_path_var)).pack(anchor="e", padx=10)
+
+# Carpeta de origen
+source_folder_var = tk.StringVar()
+tk.Label(root, text="Carpeta de origen:").pack(anchor="w")
+tk.Entry(root, textvariable=source_folder_var).pack(fill="x", padx=10)
+tk.Button(root, text="Examinar", command=lambda: browse_folder(source_folder_var)).pack(anchor="e", padx=10)
+
+# Texto y Selección de Extensiones
+tk.Label(root, text="Seleccionar extensiones a convertir:").pack(anchor="w")
+
+# Diccionario de extensiones por categorías
+extensions = {
+    "Calc": [".ods", ".xls", ".xlsx"],
+    "Write": [".odt", ".doc", ".docx"],
+    "Otros": [".ppt", ".pptx", ".rtf", ".txt", ".html", ".xml"]
 }
-for i, ext in enumerate(extension_vars.keys(), 1):
-    tk.Checkbutton(ventana, text=ext, variable=extension_vars[ext]).grid(row=i + 4, column=0, padx=10, pady=2, sticky="w")
 
-chk_estado = tk.IntVar()
-chk_guardar = tk.Checkbutton(ventana, text="Guardar en otra ubicación", variable=chk_estado)
-chk_guardar.grid(row=4, column=1, padx=10, pady=5, sticky="w")
+# Variables para controlar si se deben seleccionar todas las extensiones de una categoría
+category_vars = {}
 
-tk.Button(ventana, text="Convertir", command=convertir).grid(row=6, column=1, padx=10, pady=20)
+# Marco para las casillas de verificación
+frame = tk.Frame(root)
+frame.pack(pady=10)
 
-ventana.mainloop()
+# Crear las casillas de verificación para las categorías
+for category, exts in extensions.items():
+    category_var = tk.BooleanVar()
+    category_vars[category] = category_var
+
+    # Crear el checkbox para la categoría
+    checkbox = tk.Checkbutton(frame, text=category, variable=category_var, command=lambda category=category: toggle_extensions(category))
+    checkbox.grid(row=0, column=list(extensions.keys()).index(category), padx=10, pady=5)
+
+# Casillas de verificación individuales para las extensiones
+checkboxes = {}
+cols = 7
+row_counter = 1
+
+# Generar casillas para todas las extensiones posibles
+for ext in [".odt", ".ods", ".odp", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".rtf", ".txt", ".html", ".xml"]:
+    var = tk.BooleanVar()
+    checkboxes[ext] = var
+
+    # Crear el checkbox para cada extensión
+    tk.Checkbutton(frame, text=ext, variable=var).grid(row=row_counter, column=(list(checkboxes.keys()).index(ext) % cols), padx=10, pady=5)
+
+    if len(checkboxes) % cols == 0:
+        row_counter += 1  # Siguiente fila
+
+# Función para seleccionar/deseleccionar las extensiones de una categoría
+def toggle_extensions(category):
+    for ext in extensions[category]:
+        # Si la categoría está seleccionada, seleccionamos las extensiones correspondientes
+        checkboxes[ext].set(category_vars[category].get())
+
+
+# Carpeta de destino
+save_to_other_location_var = tk.BooleanVar()
+tk.Checkbutton(root, text="Guardar en otra ubicación", variable=save_to_other_location_var, command=toggle_destination).pack(anchor="w", padx=10)
+
+destination_folder_var = tk.StringVar()
+destination_entry = tk.Entry(root, textvariable=destination_folder_var, state=tk.DISABLED)
+destination_entry.pack(fill="x", padx=10)
+destination_button = tk.Button(root, text="Examinar", command=lambda: browse_folder(destination_folder_var), state=tk.DISABLED)
+destination_button.pack(anchor="e", padx=10)
+
+# Opción para mover archivos originales
+move_option_var = tk.StringVar(value="no_mover")
+tk.Label(root, text="Seleccionar opción para mover archivos originales:").pack(anchor="w", padx=10)
+
+tk.Radiobutton(root, text="Dejar originales en su lugar", variable=move_option_var, value="no_mover", command=toggle_move_originals).pack(anchor="w", padx=10)
+tk.Radiobutton(root, text="Mover si el PDF es más pequeño", variable=move_option_var, value="mover_si_mas_pequeno", command=toggle_move_originals).pack(anchor="w", padx=10)
+tk.Radiobutton(root, text="Mover todos los procesados", variable=move_option_var, value="mover_todos", command=toggle_move_originals).pack(anchor="w", padx=10)
+
+# Carpeta para mover archivos originales
+move_originals_folder_var = tk.StringVar()
+move_originals_entry = tk.Entry(root, textvariable=move_originals_folder_var)
+move_originals_entry.pack(fill="x", padx=10)
+move_originals_button = tk.Button(root, text="Examinar", command=lambda: browse_folder(move_originals_folder_var))
+move_originals_button.pack(anchor="e", padx=10)
+
+# Mantener fecha del archivo original
+maintain_date_var = tk.BooleanVar(value=True)
+tk.Checkbutton(root, text="Mantener fecha original del archivo", variable=maintain_date_var).pack(anchor="w", padx=10)
+
+# Botones de conversión y detener
+tk.Button(root, text="Convertir", command=start_conversion).pack(pady=10)
+tk.Button(root, text="Detener", command=stop_conversion_process).pack(pady=5)
+
+
+root.mainloop()

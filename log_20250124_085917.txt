@@ -1,0 +1,6 @@
+Log de conversión - 2025-01-24 08:59:17.262308
+
+Error en C:/temp/archivos\DATERO PARA CRÉDITOS.xlsx: [WinError 2] El sistema no puede encontrar el archivo especificado: 'C:/temp/archi\\DATERO PARA CRÉDITOS.xlsx.pdf'
+Error en C:/temp/archivos\documentos\datero sartori.xlsx: [WinError 2] El sistema no puede encontrar el archivo especificado: 'C:/temp/archi\\documentos\\datero sartori.xlsx.pdf'
+Error en C:/temp/archivos\documentos\mendozadatero.xlsx: [WinError 2] El sistema no puede encontrar el archivo especificado: 'C:/temp/archi\\documentos\\mendozadatero.xlsx.pdf'
+Error en C:/temp/archivos\vendedores\BARBOZA CRISTIAN\BARBOZA\SPRHHO~J\stockal30-9.xlsx: [WinError 2] El sistema no puede encontrar el archivo especificado: 'C:/temp/archi\\vendedores\\BARBOZA CRISTIAN\\BARBOZA\\SPRHHO~J\\stockal30-9.xlsx.pdf'

@@ -1,115 +1,144 @@
 import os
+import subprocess
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from datetime import datetime
+import shutil
 
-def generar_nombre_log():
-    # Genera un nombre único para el archivo de log basado en la fecha y hora
-    return f"log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-
-def seleccionar_carpeta(variable):
-    # Abre el cuadro de diálogo para seleccionar una carpeta y asigna la ruta a la variable
-    carpeta = filedialog.askdirectory(title="Seleccionar carpeta")
-    variable.set(carpeta)
-
-def comparar_y_actualizar():
-    if not carpeta_origen.get() or not carpeta_destino.get():
-        messagebox.showerror("Error", "Por favor, ingrese ambas rutas antes de continuar.")
+# Función para convertir archivos a PDF
+def convertir_archivos():
+    # Obtengo la ruta donde está instalado LibreOffice
+    libreoffice_path = libreoffice_entry.get()
+    
+    if not os.path.exists(libreoffice_path):
+        messagebox.showerror("Error", "La ruta de LibreOffice no es válida.")
         return
     
-    archivos_origen = obtener_archivos(carpeta_origen.get())
-    archivos_destino = obtener_archivos(carpeta_destino.get())
-
-    # Contamos cuántos archivos se van a actualizar
-    archivos_a_actualizar = 0
-    for archivo_relativo, ruta_origen in archivos_origen.items():
-        if archivo_relativo in archivos_destino:
-            archivos_a_actualizar += 1
-
-    if archivos_a_actualizar == 0:
-        messagebox.showinfo("Nada para actualizar", "No se encontraron archivos que actualizar.")
-        return
-
-    # Mensaje de confirmación con la cantidad de archivos que se van a actualizar
-    confirmacion = messagebox.askyesno("Confirmación", f"Se van a actualizar las fechas de {archivos_a_actualizar} archivos. ¿Deseas continuar?")
-    if not confirmacion:
+    # Obtengo la carpeta de origen
+    carpeta_origen = origen_entry.get()
+    
+    if not os.path.exists(carpeta_origen):
+        messagebox.showerror("Error", "La carpeta de origen no es válida.")
         return
     
-    log_filename = generar_nombre_log()
-    with open(log_filename, 'w') as log_file:
-        log_file.write(f"Log generado el {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+    # Si es necesario, obtengo la carpeta de destino
+    carpeta_destino = destino_entry.get()
+    if guardar_en_otra_var.get() and not os.path.exists(carpeta_destino):
+        messagebox.showerror("Error", "La carpeta de destino no es válida.")
+        return
+    
+    # Generar un log único basado en la fecha y hora actual
+    log_name = f"log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    with open(log_name, 'w') as log_file:
+        log_file.write(f"Log de conversión - {datetime.now()}\n\n")
         
-        actualizados = 0
-        for archivo_relativo, ruta_origen in archivos_origen.items():
-            ruta_destino = archivos_destino.get(archivo_relativo)
-            if ruta_destino and os.path.isfile(ruta_destino):
-                # Guardamos la fecha original antes de actualizarla
-                fecha_origen = os.path.getmtime(ruta_origen)
-                fecha_destino = os.path.getmtime(ruta_destino)
-                
-                # Actualizamos la fecha del archivo de destino
-                os.utime(ruta_destino, (fecha_origen, fecha_origen))
-                
-                # Escribimos la información en el log (fecha original y nueva fecha)
-                log_file.write(f"Actualizado: {archivo_relativo} - {ruta_destino} | Fecha original: {datetime.fromtimestamp(fecha_destino).strftime('%Y-%m-%d %H:%M:%S')} | Nueva fecha: {datetime.fromtimestamp(fecha_origen).strftime('%Y-%m-%d %H:%M:%S')}\n")
-                actualizados += 1
-
-        log_file.write(f"\nTotal de archivos actualizados: {actualizados}\n")
+        # Función recursiva para recorrer directorios
+        def procesar_directorio(directorio):
+            for root, dirs, files in os.walk(directorio):
+                for file in files:
+                    archivo_path = os.path.join(root, file)
+                    if file.endswith(tuple(extensiones_tildadas)):
+                        try:
+                            # Definir el comando para LibreOffice
+                            output_path = archivo_path.replace(carpeta_origen, carpeta_destino, 1) + ".pdf"
+                            # Crear directorio destino si no existe
+                            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                            
+                            # Comando de LibreOffice para la conversión
+                            command = [libreoffice_path, '--headless', '--convert-to', 'pdf', archivo_path, '--outdir', os.path.dirname(output_path)]
+                            subprocess.run(command, check=True)
+                            
+                            # Copiar la fecha original del archivo
+                            timestamp = os.path.getmtime(archivo_path)
+                            os.utime(output_path, (timestamp, timestamp))
+                            
+                            log_file.write(f"Convertido: {archivo_path} -> {output_path}\n")
+                        except Exception as e:
+                            log_file.write(f"Error en {archivo_path}: {str(e)}\n")
+        
+        # Procesar la carpeta de origen
+        procesar_directorio(carpeta_origen)
     
-    messagebox.showinfo("Proceso finalizado", f"Se actualizaron las fechas de {actualizados} archivos.\nLog guardado en {log_filename}")
+    messagebox.showinfo("Finalizado", "Conversión completada. Ver log para más detalles.")
 
-def obtener_archivos(carpeta):
-    archivos = {}
-    # Recorremos los archivos en la carpeta, incluidos los subdirectorios y los archivos de la raíz
-    for raiz, _, archivos_en_carpeta in os.walk(carpeta):
-        for archivo in archivos_en_carpeta:
-            ruta_absoluta = os.path.join(raiz, archivo)
-            ruta_relativa = os.path.relpath(ruta_absoluta, carpeta)
-            archivos[ruta_relativa] = ruta_absoluta
-    return archivos
+# Función para seleccionar carpeta de origen
+def seleccionar_origen():
+    carpeta = filedialog.askdirectory(initialdir=libreoffice_entry.get())
+    if carpeta:
+        origen_entry.delete(0, tk.END)
+        origen_entry.insert(0, carpeta)
 
-# Configuración de la UI
+# Función para seleccionar carpeta de destino
+def seleccionar_destino():
+    carpeta = filedialog.askdirectory()
+    if carpeta:
+        destino_entry.delete(0, tk.END)
+        destino_entry.insert(0, carpeta)
+
+# Función para habilitar o deshabilitar la opción de "Guardar en otra ubicación"
+def habilitar_destino(*args):
+    if guardar_en_otra_var.get():
+        destino_entry.config(state="normal")  # Habilitar campo de texto
+        destino_button.config(state="normal")  # Habilitar botón
+    else:
+        destino_entry.config(state="disabled")  # Deshabilitar campo de texto
+        destino_button.config(state="disabled")  # Deshabilitar botón
+
+# Crear la ventana principal
 root = tk.Tk()
-root.title("Comparador de carpetas")
+root.title("Convertidor de Archivos a PDF")
 
-# Agregar un mensaje explicativo
-mensaje_explicativo = tk.Label(root, text="Este programa permite comparar dos carpetas y actualizar las fechas de modificación de los archivos en la carpeta de destino, basándose en los archivos de la carpeta de origen.", wraplength=400, justify="left")
-mensaje_explicativo.pack(padx=20, pady=10)
+# Descripción del software
+descripcion_label = tk.Label(root, text="Este software convierte archivos seleccionados a PDF utilizando LibreOffice.\nEl programa puede convertir archivos en carpetas seleccionadas, manteniendo la estructura original y fechas.")
+descripcion_label.grid(row=0, column=0, columnspan=2, padx=10, pady=10)
 
-carpeta_origen = tk.StringVar()
-carpeta_destino = tk.StringVar()
-
-frame = tk.Frame(root)
-frame.pack(padx=20, pady=20)
+# Ruta de LibreOffice
+libreoffice_label = tk.Label(root, text="Ruta de LibreOffice:")
+libreoffice_label.grid(row=1, column=0, padx=10, pady=5)
+libreoffice_entry = tk.Entry(root, width=40)
+libreoffice_entry.insert(0, "C:/Program Files/LibreOffice/program/soffice.exe")  # Ruta por defecto
+libreoffice_entry.grid(row=1, column=1, padx=10, pady=5)
 
 # Carpeta de origen
-label_origen = tk.Label(frame, text="Carpeta de origen:")
-label_origen.pack(fill="x")
+origen_label = tk.Label(root, text="Carpeta de origen:")
+origen_label.grid(row=2, column=0, padx=10, pady=5)
+origen_entry = tk.Entry(root, width=40)
+origen_entry.insert(0, os.getcwd())  # Carpeta actual por defecto
+origen_entry.grid(row=2, column=1, padx=10, pady=5)
+origen_button = tk.Button(root, text="Seleccionar", command=seleccionar_origen)
+origen_button.grid(row=2, column=2, padx=10, pady=5)
 
-frame_origen = tk.Frame(frame)
-frame_origen.pack(fill="x", pady=5)
+# Extensiones de archivos a convertir (Disposición Horizontal)
+extensiones_label = tk.Label(root, text="Extensiones a convertir:")
+extensiones_label.grid(row=3, column=0, padx=10, pady=5)
+extensiones_frame = tk.Frame(root)  # Frame para los checkboxes
+extensiones_frame.grid(row=3, column=1, columnspan=2, padx=10, pady=5)
 
-entry_origen = tk.Entry(frame_origen, textvariable=carpeta_origen, width=40)
-entry_origen.pack(side="left", fill="x", padx=5)
+extensiones_tildadas = []
+for idx, ext in enumerate(['.docx', '.xlsx', '.pptx', '.odt', '.ods', '.odp']):
+    var = tk.BooleanVar(value=True)
+    checkbox = tk.Checkbutton(extensiones_frame, text=ext, variable=var)
+    checkbox.grid(row=0, column=idx, padx=5)  # Distribuir los checkboxes en una fila
+    extensiones_tildadas.append((ext, var))
 
-boton_origen = tk.Button(frame_origen, text="Seleccionar...", command=lambda: seleccionar_carpeta(carpeta_origen))
-boton_origen.pack(side="right")
+# Guardar en otra ubicación
+guardar_en_otra_var = tk.BooleanVar(value=False)
+guardar_en_otra_checkbox = tk.Checkbutton(root, text="Guardar en otra ubicación", variable=guardar_en_otra_var)
+guardar_en_otra_checkbox.grid(row=4, column=0, padx=10, pady=5, sticky="w")
 
 # Carpeta de destino
-label_destino = tk.Label(frame, text="Carpeta de destino:")
-label_destino.pack(fill="x")
+destino_label = tk.Label(root, text="Carpeta de destino:")
+destino_label.grid(row=5, column=0, padx=10, pady=5)
+destino_entry = tk.Entry(root, width=40, state="disabled")  # Inicialmente deshabilitado
+destino_entry.grid(row=5, column=1, padx=10, pady=5)
+destino_button = tk.Button(root, text="Seleccionar", command=seleccionar_destino, state="disabled")  # Inicialmente deshabilitado
+destino_button.grid(row=5, column=2, padx=10, pady=5)
 
-frame_destino = tk.Frame(frame)
-frame_destino.pack(fill="x", pady=5)
+# Vincular la función de habilitación de destino al cambio de la variable BooleanVar
+guardar_en_otra_var.trace("w", habilitar_destino)
 
-entry_destino = tk.Entry(frame_destino, textvariable=carpeta_destino, width=40)
-entry_destino.pack(side="left", fill="x", padx=5)
-
-boton_destino = tk.Button(frame_destino, text="Seleccionar...", command=lambda: seleccionar_carpeta(carpeta_destino))
-boton_destino.pack(side="right")
-
-# Botón para comparar y actualizar
-boton_comparar = tk.Button(frame, text="Comparar y actualizar fechas", command=comparar_y_actualizar)
-boton_comparar.pack(pady=20)
+# Botón para convertir
+convertir_button = tk.Button(root, text="Convertir", command=convertir_archivos)
+convertir_button.grid(row=6, column=0, columnspan=3, padx=10, pady=20)
 
 root.mainloop()
